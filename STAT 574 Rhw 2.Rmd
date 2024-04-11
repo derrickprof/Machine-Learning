@@ -1,0 +1,306 @@
+---
+title: "STAT 574 HW 2 R"
+output: html_document
+date: "`r Sys.Date()`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+## Problem 1 #######################################################
+####################################################################
+
+library(randomForest)
+
+# use hospital data to fit random forest regression
+ # display variable importance
+ # compute prediction accuracy within 10%, 15%, 20%
+
+hospital <- read.csv("C:/Users/saedw/OneDrive/Desktop/STAT 574 Data Mining/HW1STAT574S23/DATA SETS/hospital_data.csv")
+
+#SPLITTING DATA INTO 80% TRAINING AND 20% TESTING SETS 
+set.seed(109283)
+sample <- sample(c(TRUE, FALSE), nrow(hospital),
+                 replace = TRUE, prob = c(0.8, 0.2))
+train <- hospital[sample,]
+test <- hospital[!sample,]
+
+summary(hospital)
+
+# build random forest regression model
+randfor <- randomForest(surgery_cost ~ gender + age + BMI + ASA + 
+                          surgery_duration_min, data=train, ntree=150,
+                        mtry=5, maxnodes=30)
+
+# display variable importance #######
+#####################################
+print(importance(randfor,type=2))
+
+
+# compute prediction accuracy ######
+####################################
+
+# computing prediction accuracy for testing data
+p_surg_cost <- predict(randfor, newdata = test)
+
+# accuracy 10,15, 20 store true false values - compute means for accuracy scores
+
+# accuracy within 10%
+accuracy10 <- ifelse(abs(test$surgery_cost - p_surg_cost) 
+                     < 0.10*test$surgery_cost,1,0)
+
+# accuracy within 15%
+accuracy15 <- ifelse(abs(test$surgery_cost - p_surg_cost) 
+                     < 0.15*test$surgery_cost,1,0)
+# accuracy within 20%
+accuracy20 <- ifelse(abs(test$surgery_cost - p_surg_cost) 
+                     < 0.20*test$surgery_cost,1,0)
+
+# print means of accuracy scores
+print("Accuracy Scores")
+print(mean(accuracy10))
+print(mean(accuracy15))
+print(mean(accuracy20))
+
+```
+
+
+
+```{r}
+## Problem 2 ###############################################################
+############################################################################
+# card data
+# build random forest binary classifier
+# display variable importance and prediction accuracy
+
+card_data <- read.csv("C:/Users/saedw/OneDrive/Desktop/STAT 574 Data Mining/HW1STAT574S23/DATA SETS/card_transdata.csv")
+
+# split data 80% train and 20% test
+set.seed(229120)
+sample <- sample(c(TRUE,FALSE), nrow(card_data),
+                 replace=TRUE, prob=c(0.8,0.2))
+train <- card_data[sample,]
+test <- card_data[!sample,]
+
+summary(card_data)
+# build random forest binary classifier
+library(randomForest)
+rf_class <- randomForest(as.factor(fraud) ~ distance_from_home + 
+                           distance_from_last_transaction + 
+                           ratio_to_median_purchase_price + repeat_retailer + 
+                           used_chip + used_pin_number + online_order, 
+                         data = train, ntree=150, mtry=4, maxnodes=30)
+
+# display feature importance
+print(importance(rf_class, type=2))
+
+# compute prediction accuracy for testing data
+predclass <- predict(rf_class, newdata = test)
+test <- cbind(test, predclass)
+
+accuracy <- c()
+for (i in 1:nrow(test)) {
+  accuracy[i] <- ifelse(test$fraud[i]==test$predclass[i],1,0)
+}
+
+print(mean(accuracy))
+
+```
+
+```{r}
+## Problem 3 ##########################################################
+#######################################################################
+
+# random forest multinomial classifier 
+ # variable importance and prediction accuracy
+
+concuss <- read.csv("C:/Users/saedw/OneDrive/Desktop/STAT 574 Data Mining/HW1STAT574S23/DATA SETS/concussions_data.csv")
+
+# split data 80% train 20% test
+set.seed(223494)
+sample <- sample(c(TRUE,FALSE), nrow(concuss), replace=TRUE,
+                 prob=c(0.8,0.2))
+train <- concuss[sample,]
+test <- concuss[!sample,]
+
+summary(concuss)
+
+# building random forest multinomial classifier
+library(randomForest)
+rf_multi_class <- randomForest(as.factor(concussion) ~ age + nyearsplaying +
+                                 position + prevconc, data = train, ntree=150,
+                               mtry=4, maxnodes=30)
+
+
+# variable importance
+print(importance(rf_multi_class, type=2))
+
+# prediction accuracy for testing data
+predclass <- predict(rf_multi_class, newdata = test)
+test <- cbind(test, predclass)
+
+accuracy <- c()
+for (i in 1:nrow(test)) {
+  accuracy[i] <- ifelse(test$concussion[i]==test$predclass[i],1,0)
+}
+
+print(mean(accuracy))
+
+```
+
+
+```{r}
+## Problem 4 ################################################################
+#############################################################################
+
+# fit gradient boosted regression - display variable importance
+  # and compute prediction accuracy within 10%, 15%, 20%
+library(xgboost)
+
+hospital <- read.csv("C:/Users/saedw/OneDrive/Desktop/STAT 574 Data Mining/HW1STAT574S23/DATA SETS/hospital_data.csv")
+
+# split data 80% train and 20% test
+set.seed(1029374)
+sample <- sample(c(TRUE, FALSE), nrow(hospital), replace=TRUE,
+                 prob=c(0.8,0.2))
+train <- hospital[sample,]
+test <- hospital[!sample,]
+
+# numerical value is dependent variable
+train.x<- data.matrix(train[-7])
+train.y<- data.matrix(train[7])
+test.x<- data.matrix(test[-7])
+test.y<- data.matrix(test[7])
+
+# fit extreme gradient boosted regression tree
+xgb_reg <- xgboost(data = train.x, label = train.y, max.depth=6, eta=0.01,
+                   subsample=0.8, colsample_bytree=0.5, nrounds=1000,
+                   objective="reg:linear")
+# NOTES xgboost function R
+  # eta=learning rate
+  #colsample_bytree = defines what percentage of features/columns will be used
+    # for building each tree
+
+# display feature importance
+print(xgb.importance(colnames(train.x), model = xgb_reg))
+
+# compute prediction accuracy for testing data
+pred.y <- predict(xgb_reg, test.x)
+
+# accuracy scores
+# 10%
+accuracy10 <- ifelse(abs(test.y-pred.y) < 0.10*test.y,1,0)
+# 15%
+accuracy15 <- ifelse(abs(test.y-pred.y) < 0.15*test.y,1,0)
+# 20%
+accuracy20 <- ifelse(abs(test.y-pred.y) < 0.20*test.y,1,0)
+
+
+# print accuracy scores
+print(mean(accuracy10))
+print(mean(accuracy15))
+print(mean(accuracy20))
+
+```
+
+```{r}
+## Problem 5 ###############################################################
+############################################################################
+
+# gradient boosted binary classifier
+ # display variable importance and compute prediction accuracy
+library(xgboost)
+
+card_data <- read.csv("C:/Users/saedw/OneDrive/Desktop/STAT 574 Data Mining/HW1STAT574S23/DATA SETS/card_transdata.csv")
+
+# split data 80% train 20% test
+set.seed(573920)
+sample <- sample(c(TRUE, FALSE), nrow(card_data), replace=TRUE,
+                 prob=c(0.8,0.2))
+train <- card_data[sample,]
+test <- card_data[!sample,]
+
+train.x<- data.matrix(train[-8])
+train.y<- data.matrix(train[8])
+test.x<- data.matrix(test[-8])
+test.y<- data.matrix(test[8])
+
+# fit gradient boosted binary classifier
+xgb_class <- xgboost(data=train.x, label = train.y, max.depth=6, eta=0.1,
+                     subsample=0.8, colsample_bytree=0.5, nrounds = 1000,
+                     objective="binary:logistic")
+
+# display feature importance
+print(xgb.importance(colnames(train.x), model = xgb_class))
+
+# prediction accuracy for testing data
+pred.prob <- predict(xgb_class, test.x)
+
+len <- length(pred.prob)
+pred.fraud <- c()
+match <- c()
+for (i in 1:len) {
+  pred.fraud[i] <- ifelse(pred.prob[i]>=0.5,1,0)
+  match[i] <- ifelse(test.y[i]==pred.fraud[i],1,0)
+}
+
+print(mean(match))
+
+
+```
+
+
+```{r}
+## Problem 6 #############################################################
+##########################################################################
+
+# gradient boosted multinomial classifier
+  # variable importance and prediction accuracy
+library(xgboost)
+concuss <- read.csv("C:/Users/saedw/OneDrive/Desktop/STAT 574 Data Mining/HW1STAT574S23/DATA SETS/concussions_data.csv")
+
+# split data 80% train 20% test
+set.seed(749385)
+sample <- sample(c(TRUE,FALSE), nrow(concuss), replace=TRUE,
+                 prob=c(0.8,0.2))
+train <- concuss[sample,]
+test <- concuss[!sample,]
+
+train.x<- data.matrix(train[-5])
+train.y<- data.matrix(train[5])
+train.y<- train.y-1 #must range between 0 and 4 for prediction
+test.x<- data.matrix(test[-5])
+test.y<- data.matrix(test[5])
+test.y<- test.y-1
+
+# fit graident boosted multinomial classifier
+xgb_multi_class <- xgboost(data=train.x, label = train.y, max.depth=6,
+                           eta=0.1, subsample=0.8, colsample_bytree=0.5,
+                           nrounds=1000, num_class=5,
+                           objective="multi:softprob")
+
+#DISPLAYING FEATURE IMPORTANCE
+print(xgb.importance(colnames(train.x), model=xgb_multi_class))
+
+
+# compute prediction accuracy test data
+pred.prob <- predict(xgb_multi_class, test.x, reshape=TRUE)
+pred.prob <- as.data.frame(pred.prob)
+colnames(pred.prob) <- 0:2
+
+pred.class <- apply(pred.prob, 1, function(x) 
+  colnames(pred.prob)[which.max(x)])
+
+match <- c()
+for(i in 1:length(test.y)){
+  match[i] <- ifelse(pred.class[i]==as.character(test.y[i]),1,0)
+}
+
+print(mean(match))
+
+```
+
+

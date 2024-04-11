@@ -1,0 +1,639 @@
+---
+title: "STAT 574 HW4"
+output: html_document
+date: "`r Sys.Date()`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(anytime)
+
+ally_data <- read.csv("C:/Users/saedw/OneDrive/Desktop/STAT 574 Data Mining/hw4STAT574S23/DATA SETS/ALLY.csv")
+
+ally_data$Date <- anydate(ally_data$Date)
+
+#splitting data into testing and training sets
+ally_data$Year<- as.numeric(format(as.Date(ally_data$Date, format="%Y-%m-
+%d"),"%Y"))
+train.data<- ally_data[which(ally_data$Year<2022),1:2]
+test.data<- ally_data[which(ally_data$Year>=2022),1:2]
+
+
+#plotting training and testing data
+plot(as.POSIXct(ally_data$Date), ally_data$Close, main="Daily ALLY Stock Closing 
+Prices", xlab="Time", ylab="Stock Price", pch="", panel.first=grid())
+lines(as.POSIXct(train.data$Date), train.data$Close, lwd=2, col="green")
+lines(as.POSIXct(test.data$Date), test.data$Close, lwd=2, col="gray")
+legend("topleft", c("training", "testing"), lty=1, col=c("green","gray"))
+
+
+ally_data
+
+#scaling prices to fall in [0,1] 
+price<- ally_data$Close
+price.sc<- (price-min(price))/(max(price)-min(price))
+#creating train.x and train.y
+nsteps<- 60 #width of sliding window
+train.matrix <- matrix(nrow=nrow(train.data)-nsteps, ncol=nsteps+1)
+for (i in 1:(nrow(train.data)-nsteps)){
+ train.matrix[i,]<- price.sc[i:(i+nsteps)]
+}
+train.x<- array(train.matrix[,-ncol(train.matrix)],
+                dim=c(nrow(train.matrix),nsteps,1))
+train.y<- train.matrix[,ncol(train.matrix)]
+
+
+#creating test.x and test.y
+test.matrix<- matrix(nrow=nrow(test.data), ncol=nsteps+1)
+for (i in 1:nrow(test.data)){
+ test.matrix[i,]<- price.sc[(i+nrow(train.matrix)):(i+nsteps+nrow(train.matrix))]
+}
+test.x<- array(test.matrix[,-ncol(test.matrix)],dim=c(nrow(test.matrix),nsteps,1))
+test.y<- test.matrix[,ncol(test.matrix)]
+
+#################################################
+#FITTING LSTM MODEL
+##################################################
+library(keras)
+# library(tensorflow)
+
+# install_keras()
+
+LSTM.model <- keras_model_sequential() 
+#specifying model structure
+LSTM.model %>% layer_lstm(input_shape=dim(train.x)[2:3], units=nsteps)
+LSTM.model %>% layer_dense(units=1, activation="tanh") 
+LSTM.model %>% compile(loss="mean_squared_error")
+#training model
+epochs<- 5 
+for(i in 1:epochs){
+ LSTM.model %>% fit(train.x, train.y, batch_size=32, epochs=5)
+ LSTM.model %>% reset_states() #clears the hidden states in network after every batch
+}
+#predicting for testing data
+pred.y<- LSTM.model %>% predict(test.x, batch_size=32)
+#rescaling test.y and pred.y back to the original scale
+test.y.re<- test.y*(max(price)-min(price))+min(price)
+pred.y.re<- pred.y*(max(price)-min(price))+min(price)
+#computing prediction accuracy
+accuracy10<- ifelse(abs(test.y.re-pred.y.re)<0.10*test.y.re,1,0) 
+accuracy15<- ifelse(abs(test.y.re-pred.y.re)<0.15*test.y.re,1,0) 
+accuracy20<- ifelse(abs(test.y.re-pred.y.re)<0.20*test.y.re,1,0)
+
+
+print(paste("accuracy within 10%:", round(mean(accuracy10),4)))
+print(paste("accuracy within 15%:", round(mean(accuracy15),4)))
+print(paste("accuracy within 20%:", round(mean(accuracy20),4)))
+
+
+#plotting actual and predicted values for testing data
+plot(as.POSIXct(test.data$Date), test.y.re, type="l", lwd=2, col="gray", 
+main="Daily ALLY Stock Actual and Predicted Prices - LSTM Model", 
+xlab="Time", ylab="Stock Price", panel.first=grid())
+lines(as.POSIXct(test.data$Date), pred.y.re, lwd=2, col="green")
+legend("topright", c("actual", "predicted"), lty=1, lwd=2,
+col=c("gray","green"))
+
+
+
+
+
+
+#################################################
+#FITTING GRU MODEL
+##################################################
+GRU.model <- keras_model_sequential() 
+#specifying model structure
+GRU.model %>% layer_gru(input_shape=dim(train.x)[2:3], units=nsteps)
+GRU.model %>% layer_dense(units=1, activation="tanh") 
+GRU.model %>% compile(loss="mean_squared_error")
+#training model
+epochs<- 5 
+for(i in 1:epochs){
+ GRU.model %>% fit(train.x, train.y, batch_size=32, epochs=5)
+ GRU.model %>% reset_states() 
+}
+#predicting for testing data
+
+pred.y<- GRU.model %>% predict(test.x, batch_size=32)
+#rescaling pred.y back to the original scale
+pred.y.re<- pred.y*(max(price)-min(price))+min(price)
+#computing prediction accuracy
+accuracy10<- ifelse(abs(test.y.re-pred.y.re)<0.10*test.y.re,1,0) 
+accuracy15<- ifelse(abs(test.y.re-pred.y.re)<0.15*test.y.re,1,0) 
+accuracy20<- ifelse(abs(test.y.re-pred.y.re)<0.20*test.y.re,1,0)
+
+print(paste("accuracy within 10%:", round(mean(accuracy10),4)))
+print(paste("accuracy within 15%:", round(mean(accuracy15),4)))
+print(paste("accuracy within 20%:", round(mean(accuracy20),4)))
+
+#plotting actual and predicted values for testing data
+plot(as.POSIXct(test.data$Date), test.y.re, type="l", lwd=2, col="gray", 
+main="Daily Tesla Stock Actual and Predicted Prices - GRU Model", 
+xlab="Time", ylab="Stock Price", panel.first=grid())
+lines(as.POSIXct(test.data$Date), pred.y.re, lwd=2, col="blue")
+legend("topright", c("actual", "predicted"), lty=1, lwd=2,
+col=c("gray","blue"))
+```
+
+
+
+
+```{r}
+# PROBLEM 2
+
+library(anytime)
+ally_data <- read.csv("C:/Users/saedw/OneDrive/Desktop/STAT 574 Data Mining/hw4STAT574S23/DATA SETS/ALLY.csv")
+
+ally_data$Date <- anydate(ally_data$Date)
+
+#splitting data into testing and training sets
+ally_data$Year<- as.numeric(format(as.Date(ally_data$Date, format="%Y-%m-
+%d"),"%Y"))
+train.data<- ally_data[which(ally_data$Year<2022),1:2]
+test.data<- ally_data[which(ally_data$Year>=2022),1:2]
+
+
+nsteps<- 60 #width of sliding window
+train.matrix <- matrix(nrow=nrow(train.data)-nsteps, ncol=nsteps+1)
+for (i in 1:(nrow(train.data)-nsteps)){
+ train.matrix[i,]<- ally_data$Shock[i:(i+nsteps)]
+}
+train.x<- array(train.matrix[,-ncol(train.matrix)],
+                dim=c(nrow(train.matrix),nsteps,1))
+train.y<- train.matrix[,ncol(train.matrix)]
+
+#creating test.x and test.y
+test.matrix<- matrix(nrow=nrow(test.data), ncol=nsteps+1)
+for (i in 1:nrow(test.data)){
+ test.matrix[i,]<- ally_data$Shock[(i+nrow(train.matrix)):(i+nsteps+nrow(train.matrix))]
+}
+
+test.x<- array(test.matrix[,-ncol(test.matrix)],
+               dim=c(nrow(test.matrix),nsteps,1))
+test.y<- test.matrix[,ncol(test.matrix)]
+
+
+##############################################################
+#FITTING LSTM MODEL
+##############################################################
+library(keras) 
+#defining model architecture
+LSTM.biclass<- keras_model_sequential()
+LSTM.biclass %>% layer_dense(input_shape=dim(train.x)[2:3], units=nsteps)
+LSTM.biclass %>% layer_lstm(units=25)
+LSTM.biclass %>% layer_dense(units=1, activation="sigmoid") 
+LSTM.biclass %>% compile(loss="binary_crossentropy")
+#training model
+LSTM.biclass %>% fit(train.x, train.y, batch_size=32, epochs=5)
+#computing prediction accuracy for testing data
+pred.prob<- LSTM.biclass %>% predict(test.x) 
+match<- cbind(test.y, pred.prob)
+tp<- matrix(NA, nrow=nrow(match), ncol=99)
+tn<- matrix(NA, nrow=nrow(match), ncol=99)
+for (i in 1:99) {
+ tp[,i]<- ifelse(match[,1]==1 & match[,2]>0.01*i,1,0)
+ tn[,i]<- ifelse(match[,1]==0 & match[,2]<=0.01*i,1,0)
+}
+trueclassrate<- matrix(NA, nrow=99, ncol=2)
+for (i in 1:99){
+ trueclassrate[i,1]<- 0.01*i
+ trueclassrate[i,2]<- sum(tp[,i]+tn[,i])/nrow(match)
+}
+print(trueclassrate[which(trueclassrate[,2]==max(trueclassrate[,2])),])
+
+
+
+
+
+##############################################################
+#FITTING GRU MODEL
+##############################################################
+#defining model architecture
+GRU.biclass<- keras_model_sequential()
+GRU.biclass %>% layer_dense(input_shape=dim(train.x)[2:3], units=nsteps)
+GRU.biclass %>% layer_lstm(units=25)
+GRU.biclass %>% layer_dense(units=1, activation="sigmoid") 
+GRU.biclass %>% compile(loss="binary_crossentropy")
+#training model
+GRU.biclass %>% fit(train.x, train.y, batch_size=32, epochs=5)
+#computing prediction accuracy for testing data
+pred.prob<- GRU.biclass %>% predict(test.x) 
+match<- cbind(test.y, pred.prob)
+tp<- matrix(NA, nrow=nrow(match), ncol=99)
+tn<- matrix(NA, nrow=nrow(match), ncol=99)
+10
+for (i in 1:99) {
+ tp[,i]<- ifelse(match[,1]==1 & match[,2]>0.01*i,1,0)
+ tn[,i]<- ifelse(match[,1]==0 & match[,2]<=0.01*i,1,0)
+} 
+trueclassrate<- matrix(NA, nrow=99, ncol=2)
+for (i in 1:99){
+ trueclassrate[i,1]<- 0.01*i
+ trueclassrate[i,2]<- sum(tp[,i]+tn[,i])/nrow(match)
+} 
+print(trueclassrate[which(trueclassrate[,2]==max(trueclassrate[,2])),])
+```
+
+
+
+```{r}
+# Problem 3
+library(keras)
+library(dplyr)
+
+weather.data <- read.csv("C:/Users/saedw/OneDrive/Desktop/STAT 574 Data Mining/hw4STAT574S23/DATA SETS/weather_description.csv")
+
+View(weather.data)
+
+chicago <- weather.data$Chicago
+
+chicago<- ifelse(chicago =="sky is clear", "clear", 
+            ifelse(chicago %in% c("broken clouds", "few clouds", 
+                             "overcast clouds","scattered clouds", "smoke"), "cloudy",
+                             ifelse(chicago %in% c("heavy shower snow", "heavy snow", 
+                             "light shower snow", "light snow", "shower snow", 
+                             "snow"), "snow", "rain")))
+weather.data$clear<- ifelse(chicago=="clear",1,0)
+weather.data$cloudy<- ifelse(chicago=="cloudy",1,0)
+weather.data$snow<- ifelse(chicago=="snow",1,0)
+weather.data$rain<- ifelse(chicago=="rain",1,0)
+weather.data$year<- format(as.Date(weather.data$datetime, format="%Y-%m-%d"),"%Y")
+
+
+
+#DEFINING FUNCTION THAT FITS RNN MODEL 
+rnn.model<- function(modelname, varname) { 
+ 
+  #creating train.x, train.y, test.x, and test.y sets
+  train.data<- weather.data[which(weather.data$year<2017),varname]
+  test.data<- weather.data[which(weather.data$year==2017),varname]
+  nsteps<- 60 
+  train.matrix <- matrix(nrow=length(train.data)-nsteps, ncol=nsteps+1)
+
+  for (i in 1:(length(train.data)-nsteps)){
+    train.matrix[i,]<- weather.data[i:(i+nsteps),varname]
+  }
+  train.x<- array(train.matrix[,-
+  ncol(train.matrix)],dim=c(nrow(train.matrix),nsteps,1))
+  train.y<- train.matrix[,ncol(train.matrix)]
+  test.matrix<- matrix(nrow=length(test.data), ncol=nsteps+1)
+  for (i in 1:length(test.data)){
+    test.matrix[i,]<- weather.data[(i+nrow(train.matrix)):(i+nsteps+nrow(train.matrix))
+                                   ,varname]
+  }
+  test.x<- array(test.matrix[,-ncol(test.matrix)],dim=c(nrow(test.matrix),nsteps,1))
+  test.y<- test.matrix[,ncol(test.matrix)]
+
+  #defining model architecture
+  fitted.model<- keras_model_sequential()
+  fitted.model %>% layer_dense(input_shape=dim(train.x)[2:3], units=nsteps)
+  if (modelname=='lstm') {
+    fitted.model %>% layer_lstm(units=6)
+  } else fitted.model %>% layer_gru(units=6)
+  fitted.model %>% layer_dense(units=1, activation='sigmoid') 
+  fitted.model %>% compile(loss='binary_crossentropy')
+  #training model
+  fitted.model %>% fit(train.x, train.y, batch_size=32, epochs=1)
+  #computing predicted probability of rain for testing data
+  pred.prob<- fitted.model %>% predict(test.x)
+  return(list(test.y, pred.prob))
+
+}
+
+
+
+#DEFINING FUNCTION THAT COMPUTES PREDICTION ACCURACY
+
+accuracy<- function() {
+ 
+test.y<- bind_cols(test.clear, test.cloudy, test.snow, test.rain)
+colnames(test.y)<- 1:4
+true.class<- as.numeric(apply(test.y, 1, function(x) 
+colnames(test.y)[which.max(x)]))
+ 
+pred.prob<- bind_cols(pred.prob.clear, pred.prob.cloudy, pred.prob.snow, 
+pred.prob.cloudy)
+colnames(pred.prob)<- 1:4
+pred.class<- as.numeric(apply(pred.prob, 1, function(x) 
+colnames(pred.prob)[which.max(x)]))
+15
+match<- c()
+for (i in 1:length(pred.class)) {
+ match[i]<- ifelse(pred.class[i]==true.class[i],1,0)
+}
+return(round(mean(match),4))
+}
+#RUNNING LSTM BINARY CLASSIFICATION MODELS
+list.clear<- rnn.model('lstm', 'clear')
+test.clear<- list.clear[1]
+pred.prob.clear<- list.clear[2]
+list.cloudy<- rnn.model('lstm', 'cloudy')
+test.cloudy<- list.cloudy[1]
+pred.prob.cloudy<- list.cloudy[2]
+list.snow<- rnn.model('lstm', 'snow')
+test.snow<- list.snow[1]
+pred.prob.snow<- list.snow[2]
+list.rain<- (rnn.model('lstm', 'rain'))
+test.rain<- list.rain[1]
+pred.prob.rain<- list.rain[2]
+print(accuracy())
+
+
+#RUNNING GRU BINARY CLASSIFICATION MODELS
+list.clear<- rnn.model('gru', 'clear')
+test.clear<- list.clear[1]
+pred.prob.clear<- list.clear[2]
+list.cloudy<- rnn.model('gru', 'cloudy')
+test.cloudy<- list.cloudy[1]
+pred.prob.cloudy<- list.cloudy[2]
+list.snow<- rnn.model('gru', 'snow')
+test.snow<- list.snow[1]
+pred.prob.snow<- list.snow[2]
+list.rain<- (rnn.model('gru', 'rain'))
+test.rain<- list.rain[1]
+pred.prob.rain<- list.rain[2]
+print(accuracy())
+
+```
+
+
+
+
+```{r}
+# Problem 4
+
+comm.data <- read.csv("C:/Users/saedw/OneDrive/Desktop/STAT 574 Data Mining/hw4STAT574S23/DATA SETS/commodity 2000-2022.csv")
+
+gold.data <- subset(comm.data, Symbol == "Gold")
+
+library(changepoint)
+#detection of change-points for change in mean
+ansmean=cpt.mean(gold.data$Close, penalty="AIC", method="BinSeg", Q=3)
+plot(ansmean,cpt.col="red",ylab="Daily Closing Price", main="Change Point 
+Detection for Change in Mean")
+print(ansmean)
+
+
+#detection of change-points for change in mean and variance
+ansmeanvar=cpt.meanvar(gold.data$Close, penalty="AIC", method="BinSeg", Q=3)
+plot(ansmeanvar,cpt.col="red",ylab="Daily Closing Price", main="Change Point 
+Detection for Change in Mean and Variance")
+print(ansmeanvar)
+
+```
+
+
+
+
+
+```{r}
+# Problem5
+
+# gold.data
+
+
+gold.data$Date<- as.Date(gold.data$Date, format="%Y-%m-%d")
+
+
+library(tibbletime) #creates indices for date in time series data
+library(anomaly) 
+library(tidyverse)
+library(dplyr)
+
+gold.data_tbl <- as_tbl_time(gold.data, Date)
+
+
+
+gold.data_tbl %>% time_decompose(Close, method="stl") %>% anomalize(remainder, 
+method="iqr") %>% time_recompose() %>% plot_anomalies(time_recomposed=TRUE, 
+color_no='blue', color_yes='red',fill_ribbon='skyblue', size_circles=4) + 
+labs(title="Anomalies in Daily Closing Prices of Wheat", subtitle="1/4/2000-
+4/8/2022") 
+
+
+
+```
+
+
+
+```{r}
+# Problem 6
+
+# i. word count
+
+library(gutenbergr)
+library(stringr)
+library(dplyr)
+library(tidytext)
+library(stopwords) 
+library(tibble)
+library(ggplot2)
+library(wordcloud)
+
+
+book<- gutenberg_download(467, meta_fields="author")
+
+#puts text into tibble format
+book<- as_tibble(book) %>% 
+ mutate(document = row_number()) %>% 
+ select(-gutenberg_id)
+#creates tokens (words)
+#tokenization is the process of splitting text into tokens
+tidy_book <- book %>%
+ unnest_tokens(word, text) %>%
+ group_by(word) %>%
+ filter(n() > 10) %>%
+ ungroup()
+
+
+#identifying and removing stopwords (prepositions, articles)
+stopword <- as_tibble(stopwords::stopwords("en")) 
+stopword <- rename(stopword, word=value)
+tb <- anti_join(tidy_book, stopword, by='word')
+
+#calculating frequency for the top 25 words
+word_count <- tb %>% 
+ count(word, sort = TRUE)
+print(word_count, n=25)
+
+
+# ii. bar graph
+
+#plotting bar graph for 25 top words 
+tb %>%
+ count(author, word, sort = TRUE) %>%
+ filter(n >=232) %>%
+ mutate(word = reorder(word, n)) %>%
+ ggplot(aes(word, n)) +
+ geom_col(aes(fill=author)) +
+ xlab(NULL) +
+ scale_y_continuous(expand = c(0, 0)) +
+ coord_flip() +
+ theme_classic(base_size = 12) +
+ labs(fill= "Author", title="Word frequency", subtitle="25 top words")+
+ theme(plot.title = element_text(lineheight=.8, face="bold")) +
+ scale_fill_brewer()
+
+
+# iii. Word Cloud
+
+#plotting word cloud
+tb %>%
+ count(word) %>%
+ with(wordcloud(word, n, max.words=25, colors=brewer.pal(10, "Set1")))
+
+```
+
+
+
+
+```{r}
+# Problem 8
+
+ 
+library(keras)
+library(EBImage)
+
+
+#preparing training set
+
+# CARACALS ###################
+
+setwd("C:/Users/saedw/OneDrive/Desktop/STAT 574 Data Mining/hw4STAT574S23/DATA SETS/WildAnimalsImages/train/CARACALS") 
+img.caracals<- sample(dir()); 
+train.caracals<- list(NULL); 
+for(i in 1:length(img.caracals)) {
+ train.caracals[[i]]<- readImage(img.caracals[i])
+ train.caracals[[i]]<- resize(train.caracals[[i]], 100, 100)
+} 
+
+# CHEETAS ###################
+
+setwd("C:/Users/saedw/OneDrive/Desktop/STAT 574 Data Mining/hw4STAT574S23/DATA SETS/WildAnimalsImages/train/CHEETAHS") 
+img.cheetahs<- sample(dir()); 
+train.cheetahs<- list(NULL); 
+for(i in 1:length(img.cheetahs)) {
+ train.cheetahs[[i]]<- readImage(img.cheetahs[i])
+ train.cheetahs[[i]]<- resize(train.cheetahs[[i]], 100, 100)
+} 
+
+# LIONS ###################
+
+setwd("C:/Users/saedw/OneDrive/Desktop/STAT 574 Data Mining/hw4STAT574S23/DATA SETS/WildAnimalsImages/train/LIONS") 
+img.lions<- sample(dir()); 
+train.lions<- list(NULL); 
+for(i in 1:length(img.lions)) {
+ train.lions[[i]]<- readImage(img.lions[i])
+ train.lions[[i]]<- resize(train.lions[[i]], 100, 100)
+} 
+
+# TIGERS ###################
+
+setwd("C:/Users/saedw/OneDrive/Desktop/STAT 574 Data Mining/hw4STAT574S23/DATA SETS/WildAnimalsImages/train/TIGERS") 
+img.tigers<- sample(dir()); 
+train.tigers<- list(NULL); 
+for(i in 1:length(img.tigers)) {
+ train.tigers[[i]]<- readImage(img.tigers[i])
+ train.tigers[[i]]<- resize(train.tigers[[i]], 100, 100)
+} 
+
+
+train.pool<- c(train.caracals[1:40], train.cheetahs[1:40], train.lions[1:40], 
+train.tigers[1:40])
+#permuting image dimensions
+train<- aperm(combine(train.pool), c(4,1,2,3))
+#creating image labels
+train.y<- c(rep(0,40),rep(1,40),rep(2,40),rep(3,40))
+train.lab<- to_categorical(train.y)  
+
+
+
+#preparing testing set
+
+# CARCALS ##############
+
+setwd("C:/Users/saedw/OneDrive/Desktop/STAT 574 Data Mining/hw4STAT574S23/DATA SETS/WildAnimalsImages/test/CARACALS") 
+img.caracals<- sample(dir()); 
+test.caracals<- list(NULL); 
+for(i in 1:length(img.caracals)) {
+ test.caracals[[i]]<- readImage(img.caracals[i])
+ test.caracals[[i]]<- resize(test.caracals[[i]], 100, 100)
+}
+
+# CHEETAS #################
+
+setwd("C:/Users/saedw/OneDrive/Desktop/STAT 574 Data Mining/hw4STAT574S23/DATA SETS/WildAnimalsImages/test/CHEETAHS") 
+img.cheetahs<- sample(dir()); 
+test.cheetahs<- list(NULL); 
+for(i in 1:length(img.cheetahs)) {
+ test.cheetahs[[i]]<- readImage(img.cheetahs[i])
+ test.cheetahs[[i]]<- resize(test.cheetahs[[i]], 100, 100)
+}
+
+# LIONS #########################
+
+setwd("C:/Users/saedw/OneDrive/Desktop/STAT 574 Data Mining/hw4STAT574S23/DATA SETS/WildAnimalsImages/test/LIONS") 
+img.lions<- sample(dir()); 
+test.lions<- list(NULL); 
+for(i in 1:length(img.lions)) {
+ test.lions[[i]]<- readImage(img.lions[i])
+ test.lions[[i]]<- resize(test.lions[[i]], 100, 100)
+}
+
+# TIGERS ########################
+
+setwd("C:/Users/saedw/OneDrive/Desktop/STAT 574 Data Mining/hw4STAT574S23/DATA SETS/WildAnimalsImages/test/TIGERS") 
+img.tigers<- sample(dir()); 
+test.tigers<- list(NULL); 
+for(i in 1:length(img.tigers)) {
+ test.tigers[[i]]<- readImage(img.tigers[i])
+ test.tigers[[i]]<- resize(test.tigers[[i]], 100, 100)
+}
+
+
+test.pool<- c(test.caracals[1:3], test.cheetahs[1:3], test.lions[1:3], 
+test.tigers[1:3])
+test<- aperm(combine(test.pool), c(4,1,2,3))
+test.y<- c(rep(0,3),rep(1,3),rep(2,3),rep(3,3))
+test.lab<- to_categorical(test.y)
+
+
+#building the model ##########################
+
+model.cnn<- keras_model_sequential() 
+model.cnn %>% layer_conv_2d(filters=40, kernel_size=c(3,3), 
+ activation='relu', input_shape=c(100,100,3)) %>% 
+ layer_conv_2d(filters=40, kernel_size=c(3,3), activation='relu') %>% 
+ layer_max_pooling_2d(pool_size=c(3,3)) %>% layer_dropout(rate=0.25) %>% 
+ layer_conv_2d(filters=80, kernel_size=c(3,3), activation='relu') %>% 
+ layer_conv_2d(filters=80, kernel_size=c(3,3), activation='relu') %>% 
+ layer_max_pooling_2d(pool_size=c(3,3)) %>% layer_dropout(rate=0.35) %>% 
+ layer_flatten() %>% layer_dense(units=256, activation='relu') %>% 
+ layer_dropout(rate=0.25) %>% layer_dense(units=4, activation="softmax") %>% 
+ 
+compile(loss='categorical_crossentropy', optimizer=optimizer_adam(),
+metrics=c("accuracy"))
+history<- model.cnn %>% fit(train, train.lab, epochs=50, batch_size=40,
+validation_split=0.2)
+
+
+#computing prediction accuracy for testing set
+model.cnn %>% evaluate(test, test.lab) 
+pred.class<- as.array(model.cnn %>% predict(test) %>% k_argmax())
+print(pred.class)
+
+print(test.y)
+
+print(paste("accuracy=", round(1-mean(test.y!=pred.class),digits=4)))
+
+```
+
+
+
+
+
+

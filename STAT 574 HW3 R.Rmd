@@ -1,0 +1,367 @@
+---
+title: "STAT 574 Homework 3"
+output: html_document
+date: "`r Sys.Date()`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r}
+#### Problem 1 ########
+## Naiive Bayes Binary Classification - compute prediction accuracy #########
+
+# Data
+card_data <- read.csv("C:/Users/saedw/OneDrive/Desktop/STAT 574 Data Mining/HW1STAT574S23/DATA SETS/card_transdata.csv")
+
+# split data 80 train 20 test
+set.seed(389284)
+sample <- sample(c(TRUE, FALSE), nrow(card_data), replace=TRUE, 
+                 prob = c(0.8,0.2))
+train <- card_data[sample,]
+test  <- card_data[!sample,]
+
+test.x <- data.matrix(test[-8])
+test.y <- data.matrix(test[8])
+
+print(names(train))
+
+# fit naive bayes binary classifier
+library(e1071)
+nb.class <- naiveBayes(as.factor(fraud) ~ distance_from_home + 
+                         distance_from_last_transaction + 
+                         ratio_to_median_purchase_price + repeat_retailer +
+                         used_chip + used_pin_number + online_order,
+                       data=train)
+
+# compute prediction accuracy for testing data
+pred.y <- as.numeric(predict(nb.class, test.x))-1
+
+match <- c()
+for(i in 1:length(pred.y)){
+  match[i] <- ifelse(test.y[i]==pred.y[i],1,0)
+}
+
+print(paste('accuracy=', round(mean(match)*100, digits = 2), '%'))
+
+```
+
+
+```{r}
+### Problem 2 ################
+### Naive Bayes multinomial classifier - compute prediction accuracy ###
+
+concuss_data <- read.csv("C:/Users/saedw/OneDrive/Desktop/STAT 574 Data Mining/HW1STAT574S23/DATA SETS/concussions_data.csv")
+
+# split data test and train
+set.seed(3849433)
+sample <- sample(c(TRUE,FALSE), nrow(concuss_data), replace=TRUE,
+                 prob=c(0.8,0.2))
+train <- concuss_data[sample,]
+test <- concuss_data[!sample,]
+
+test.x <- data.matrix(test[-5])
+test.y <- data.matrix(test[5])
+print(names(concuss_data))
+
+#FITTING NAIVE BAYES BINARY CLASSIFIER
+library(e1071)
+nb.multiclass<- naiveBayes(as.factor(concussion) ~ age + nyearsplaying + 
+                             position	+ prevconc, data=train)
+
+#COMPUTING PREDICTION ACCURACY FOR TESTING DATA
+pred.y<- as.numeric(predict(nb.multiclass, test.x))
+
+print(paste('accuracy=', round((1-mean(test.y!=pred.y))*100, digits=2), '%'))
+
+```
+
+```{r}
+## Problem 3 ##################################
+### artificial nueral network regression - accuracies 10,15,20% #######
+
+# Data
+hospital_data <- read.csv("C:/Users/saedw/OneDrive/Desktop/STAT 574 Data Mining/HW1STAT574S23/DATA SETS/hospital_data.csv")
+
+hospital_data$gender <- ifelse(hospital_data$gender=='M',1,0)
+# remove medical ID
+hospital_data <- hospital_data[,-1]
+View(hospital_data)
+#SCALING VARIABLES TO FALL IN [0,1]
+library(dplyr)
+
+scale01 <- function(x){
+  (x-min(x))/(max(x)-min(x))
+}
+
+hospital_data <- hospital_data %>% mutate_all(scale01)
+
+
+# split data to test and train
+set.seed(3848058)
+sample <- sample(c(TRUE, FALSE), nrow(hospital_data), replace=TRUE, 
+                 prob=c(0.8,0.2))
+train<- hospital_data[sample,]
+test<-  hospital_data[!sample,]
+test.x<- data.matrix(test[-6])
+test.y<- data.matrix(test[6])
+
+print(names(hospital_data))
+
+#FITTING ANN WITH LOGISTIC ACTIVATION FUNCTION
+library(neuralnet)
+ann.reg<- neuralnet(surgery_cost ~ gender + age + ASA + BMI
+                    + surgery_duration_min, data=train, 
+                    hidden=3, act.fct="logistic") 
+
+
+#PLOTTING THE DIAGRAM
+plot(ann.reg)
+
+#COMPUTING PREDICTION ACCURACY FOR TESTING DATA
+pred.y<- predict(ann.reg, test.x)
+
+#accuracy within 10%
+accuracy10<- ifelse(abs(test.y-pred.y)<0.10*test.y,1,0) 
+
+#accuracy within 15%
+accuracy15<- ifelse(abs(test.y-pred.y)<0.15*test.y,1,0) 
+
+#accuracy within 20%
+accuracy20<- ifelse(abs(test.y-pred.y)<0.20*test.y,1,0)
+
+print('Prediction Accuracy')
+print(paste('within 10%:', round(mean(accuracy10),4)))
+print(paste('within 15%:', round(mean(accuracy15),4)))
+print(paste('within 20%:', round(mean(accuracy20),4)))
+
+
+#PLOTTING ACTUAL AND PREDICTED VALUES FOR TESTING DATA
+x<- 1:length(test.y)
+plot(x, test.y, type="l", lwd=2, col="magenta", main="ANN Regression with 
+Logistic Activation Function", panel.first=grid())
+lines(x, pred.y, lwd=2, col="dodgerblue")
+points(x,test.y, pch=16, col="magenta")
+points(x, pred.y, pch=16, col="dodgerblue")
+legend("topright", c("actual", "predicted"), lty=1, lwd=2,
+col=c("magenta","dodgerblue"))
+
+
+
+#################################################################
+#FITTING ANN WITH TANH ACTIVATION FUNCTION
+ann.reg<- neuralnet(surgery_cost ~ gender + age + ASA + BMI
+                    + surgery_duration_min, data=train, 
+                    hidden=2, act.fct="tanh") 
+
+#PLOTTING THE DIAGRAM
+plot(ann.reg)
+
+#COMPUTING PREDICTION ACCURACY FOR TESTING DATA
+pred.y<- predict(ann.reg, test.x)
+
+#accuracy within 10%
+accuracy10<- ifelse(abs(test.y-pred.y)<0.10*test.y,1,0) 
+
+#accuracy within 15%
+accuracy15<- ifelse(abs(test.y-pred.y)<0.15*test.y,1,0) 
+
+#accuracy within 20%
+accuracy20<- ifelse(abs(test.y-pred.y)<0.20*test.y,1,0)
+
+print('Prediction Accuracy')
+print(paste('within 10%:', round(mean(accuracy10),4)))
+print(paste('within 15%:', round(mean(accuracy15),4)))
+print(paste('within 20%:', round(mean(accuracy20),4)))
+
+#PLOTTING ACTUAL AND PREDICTED VALUES FOR TESTING DATA
+x<- 1:length(test.y)
+plot(x, test.y, type="l", lwd=2, col="orange", main="ANN Regression with
+Tanh Activation Function", panel.first=grid())
+lines(x, pred.y, lwd=2, col="purple")
+points(x,test.y, pch=16, col="orange")
+points(x, pred.y, pch=16, col="purple")
+legend("topright", c("actual", "predicted"), lty=1, lwd=2,
+col=c("orange","purple"))
+```
+
+
+
+
+```{r}
+#### Problem 4 ##############################
+## Artificial Neural Network Binary - compute prediction accuracy ##########
+
+# Data
+card_data <- read.csv("C:/Users/saedw/OneDrive/Desktop/STAT 574 Data Mining/HW1STAT574S23/DATA SETS/card_transdata.csv")
+
+#SCALING VARIABLES TO FALL IN [0,1]
+library(dplyr)
+
+scale01 <- function(x){
+  (x-min(x))/(max(x)-min(x))
+}
+
+card_data<- card_data %>% mutate_all(scale01)
+
+#SPLITTING DATA INTO 80% TRAINING AND 20% TESTING SETS 
+set.seed(839754)
+sample <- sample(c(TRUE, FALSE), nrow(card_data), replace=TRUE, prob=c(0.8,0.2))
+train<- card_data[sample,]
+test<- card_data[!sample,]
+
+train.x<- data.matrix(train[-8])
+train.y<- data.matrix(train[8])
+test.x<- data.matrix(test[-8])
+test.y<- data.matrix(test[8])
+
+
+library(neuralnet)
+
+#FITTING ANN WITH LOGISTIC ACTIVATION FUNCTION AND ONE LAYER WITH THREE NEURONS
+ann.class<- neuralnet(as.factor(fraud) ~ distance_from_home + 
+                         distance_from_last_transaction + 
+                         ratio_to_median_purchase_price + repeat_retailer +
+                         used_chip + used_pin_number + online_order, data=train, 
+                      hidden=3, act.fct="logistic")
+
+#PLOTTING THE DIAGRAM
+plot(ann.class)
+
+#COMPUTING PREDICTION ACCURACY FOR TESTING DATA
+pred.prob<- predict(ann.class, test.x)[,1]
+
+match<- c()
+for (i in 1:length(test.y)){
+  pred.y[i]<- ifelse(pred.prob[i]>0.5,1,0)
+  match[i]<- ifelse(test.y[i]==pred.y[i],1,0)
+}
+
+print(paste("accuracy=", round(mean(match), digits=4)))
+
+####################################################################
+#FITTING ANN WITH LOGISTIC ACTIVATION FUNCTION AND C(2,3) LAYERS
+ann.class<- neuralnet(as.factor(fraud) ~ distance_from_home + 
+                         distance_from_last_transaction + 
+                         ratio_to_median_purchase_price + repeat_retailer +
+                         used_chip + used_pin_number + online_order, data=train, 
+                      hidden=3, act.fct="logistic")
+
+#PLOTTING THE DIAGRAM
+plot(ann.class)
+
+#COMPUTING PREDICTION ACCURACY FOR TESTING DATA
+pred.prob<- predict(ann.class, test.x)[,1]
+
+match<- c()
+pred.y<- c()
+for (i in 1:length(test.y)){
+  pred.y[i]<- ifelse(pred.prob[i]>0.5,1,0)
+  match[i]<- ifelse(test.y[i]==pred.y[i],1,0)
+}
+
+print(paste("accuracy=", round(mean(match), digits=4)))
+
+####################################################################
+#FITTING ANN WITH TANH ACTIVATION FUNCTION
+ann.class<- neuralnet(as.factor(fraud) ~ distance_from_home + 
+                         distance_from_last_transaction + 
+                         ratio_to_median_purchase_price + repeat_retailer +
+                         used_chip + used_pin_number + online_order, data=train, 
+                      hidden=2, act.fct="tanh")
+
+#PLOTTING THE DIAGRAM
+plot(ann.class)
+
+#COMPUTING PREDICTION ACCURACY FOR TESTING DATA
+pred.prob<- predict(ann.class, test.x)[,1]
+
+match<- c()
+pred.y<- c()
+for (i in 1:length(test.y)){
+  pred.y[i]<- ifelse(pred.prob[i]>0.5,1,0)
+  match[i]<- ifelse(test.y[i]==pred.y[i],1,0)
+}
+
+print(paste("accuracy=", round(mean(match), digits=4)))
+
+
+```
+
+
+
+```{r}
+# Problem 5 ############################
+# Artificial Nueral Network - compute pred accuracy ##########################
+
+# Data
+concuss_data <- read.csv("C:/Users/saedw/OneDrive/Desktop/STAT 574 Data Mining/HW1STAT574S23/DATA SETS/concussions_data.csv")
+
+View(concuss_data)
+
+# convert character variables to numeric 
+concuss_data$position <- 
+  ifelse(concuss_data$position=='Offensive Lineman',1,
+         ifelse(concuss_data$position=='Cornerback',2,
+                ifelse(concuss_data$position=='Running Back',3,
+                       ifelse(concuss_data$position=='Quarterback',4,5))))
+concuss_data$concussion <- 
+  ifelse(concuss_data$concussion=='mild',1,
+         ifelse(concuss_data$concussion=='moderate',2,3))
+
+
+#SCALING VARIABLES TO FALL IN [0,1]
+library(dplyr)
+
+scale01 <- function(x){
+  (x-min(x))/(max(x)-min(x))
+}
+
+concuss_data<- concuss_data %>% mutate_all(scale01)
+
+
+#SPLITTING DATA INTO 80% TRAINING AND 20% TESTING SETS 
+set.seed(76309)
+sample <- sample(c(TRUE, FALSE), nrow(concuss_data), replace=TRUE, prob=c(0.8,0.2))
+train<- concuss_data[sample,]
+test<- concuss_data[!sample,]
+
+train.x<- data.matrix(train[-5])
+train.y<- data.matrix(train[5])
+test.x<- data.matrix(test[-5])
+test.y<- data.matrix(test[5])
+
+
+#FITTING ANN WITH LOGISTIC ACTIVATION FUNCTION
+library(neuralnet)
+set.seed(38759)
+ann.mclass<- neuralnet(as.factor(concussion) ~ age + nyearsplaying + 
+                         position + prevconc, data=train, 
+                       hidden=3, act.fct="logistic") 
+
+#PLOTTING THE DIAGRAM
+plot(ann.mclass)
+
+#COMPUTING PREDICTION ACCURACY FOR TESTING DATA
+pred.prob <- predict(ann.mclass, test.x)
+pred.prob<- as.data.frame(pred.prob)
+
+colnames(pred.prob)<- c(0, 0.5, 1)
+ 
+pred.class<- apply(pred.prob, 1, function(x) colnames(pred.prob)[which.max(x)])
+
+match<- c()
+for (i in 1:length(test.y)) {
+  match[i]<- ifelse(pred.class[i]==as.character(test.y[i]),1,0)
+}
+
+print(accuracy<- mean(match))
+
+```
+
+
+
+
