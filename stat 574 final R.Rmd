@@ -1,0 +1,237 @@
+---
+title: "574 Final"
+output: html_document
+date: "`r Sys.Date()`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r}
+# merge datasets by RB name and year
+
+college_stats <- read.csv("C:/Users/saedw/OneDrive/Desktop/STAT 574 Data Mining/Final Project - RB WAR/college_football_stats.csv")
+
+nfl_draft <- read.csv("C:/Users/saedw/OneDrive/Desktop/STAT 574 Data Mining/Final Project - RB WAR/nfl_draft.csv")
+
+
+pff_grade <- read.csv("C:/Users/saedw/OneDrive/Desktop/STAT 574 Data Mining/Final Project - RB WAR/nfl_player_grades.csv")
+
+
+
+
+# data cleaning ###############################################
+## merge datasets together - predictors - college stats #######
+
+library(dplyr)
+
+
+# future predictions
+pred_data <- subset(college_stats, Year==2023)
+
+write.csv(pred_data,"C:/Users/saedw/OneDrive/Desktop/STAT 574 Data Mining/Final Project - RB WAR/RB_pred_data.csv", row.names = FALSE)
+
+# subset nfl_draft and pff_grade to only needed stats
+draft_sub <- subset(nfl_draft, select = c(Player, Year, Pos))
+
+pff_sub <- subset(pff_grade, select = c(Player, Year, grades_offense))
+
+
+# merge college stats and nfl draft - dropping non-matches
+drafted_college_stats <- merge(college_stats, draft_sub,
+                               by.x = c("Player", "Year"), by.y=c("Player", "Year"),
+                               all = FALSE)
+
+# merge drafted_college_stats and pff_grades
+yearly_stats <- merge(drafted_college_stats, pff_sub,
+                      by.x = c("Player", "Year"), by.y = c("Player", "Year"),
+                      all = FALSE)
+
+concat_data <- subset(yearly_stats, Pos=="RB")
+
+# convert NA to 0
+concat_data[is.na(concat_data)] <- 0
+
+
+# subset to needed data
+final_data <- subset(concat_data, select = c(School, Conf, G, Att, Rsh_Yds,
+                                             Rsh_Avg, Rsh_TD, Rec, Rec_Yds, Rec_Avg,
+                                             Rec_TD, Plays, grades_offense))
+
+mean(final_data$grades_offense)
+
+range(final_data$grades_offense)
+
+write.csv(final_data,"C:/Users/saedw/OneDrive/Desktop/STAT 574 Data Mining/Final Project - RB WAR/project_data_og.csv", row.names = FALSE)
+```
+
+
+
+```{r}
+### Random Forest Model ##########
+library(randomForest)
+
+
+#SPLITTING DATA INTO 80% TRAINING AND 20% TESTING SETS 
+set.seed(109283)
+sample <- sample(c(TRUE, FALSE), nrow(final_data),
+                 replace = TRUE, prob = c(0.8, 0.2))
+train <- final_data[sample,]
+test <- final_data[!sample,]
+
+
+# build random forest regression model - grades_offense
+randfor <- randomForest(grades_offense ~ School + Conf + G + Att + Rsh_Yds +
+                          Rsh_Avg + Rsh_TD + Rec + Rec_Yds + Rec_Avg + Rec_TD +
+                          Plays, data=train, ntree=150,
+                        mtry=5, maxnodes=30)
+
+
+# display variable importance #######
+print(importance(randfor,type=2))
+
+# computing prediction accuracy for testing data
+p_grades_offense <- predict(randfor, newdata = test)
+
+# accuracy 10,15, 20 store true false values - compute means for accuracy scores
+
+# accuracy within 10%
+accuracy10 <- ifelse(abs(test$grades_offense - p_grades_offense) 
+                     < 0.10*test$grades_offense,1,0)
+
+# accuracy within 15%
+accuracy15 <- ifelse(abs(test$grades_offense - p_grades_offense) 
+                     < 0.15*test$grades_offense,1,0)
+# accuracy within 20%
+accuracy20 <- ifelse(abs(test$grades_offense - p_grades_offense) 
+                     < 0.20*test$grades_offense,1,0)
+
+# print means of accuracy scores
+print("Accuracy Scores - Random Forest")
+print(mean(accuracy10))
+print(mean(accuracy15))
+print(mean(accuracy20))
+
+```
+
+
+
+
+
+```{r}
+# XGBoost Regression Model ########
+
+library(xgboost)
+
+
+xg_data <- subset(final_data, select = c(School, Conf, G, Att, Rsh_Yds,
+                                             Rsh_Avg, Rsh_TD, Rec, Rec_Yds, Rec_Avg,
+                                             Rec_TD, Plays, grades_offense))
+
+#SPLITTING DATA INTO 80% TRAINING AND 20% TESTING SETS 
+set.seed(109283)
+sample <- sample(c(TRUE, FALSE), nrow(xg_data),
+                 replace = TRUE, prob = c(0.8, 0.2))
+train <- xg_data[sample,]
+test <- xg_data[!sample,]
+
+
+# numerical value is dependent variable
+train.x<- data.matrix(train[-13])
+train.y<- data.matrix(train[13])
+test.x<- data.matrix(test[-13])
+test.y<- data.matrix(test[13])
+
+# fit extreme gradient boosted regression tree
+xgb_reg <- xgboost(data = train.x, label = train.y, max.depth=6, eta=0.01,
+                   subsample=0.8, colsample_bytree=0.5, nrounds=1000,
+                   objective="reg:linear")
+
+
+# display feature importance
+print(xgb.importance(colnames(train.x), model = xgb_reg))
+
+# compute prediction accuracy for testing data
+pred.y <- as.data.frame(predict(xgb_reg, test.x))
+
+
+# accuracy scores
+# 10%
+accuracy10 <- ifelse(abs(test.y-pred.y) < 0.10*test.y,1,0)
+# 15%
+accuracy15 <- ifelse(abs(test.y-pred.y) < 0.15*test.y,1,0)
+# 20%
+accuracy20 <- ifelse(abs(test.y-pred.y) < 0.20*test.y,1,0)
+
+
+# print accuracy scores
+print(mean(accuracy10))
+print(mean(accuracy15))
+print(mean(accuracy20))
+
+```
+
+
+
+
+```{r}
+## Predictions on New Rookie Class ###
+
+# pred_data - 2023 rookie running back class - subset to needed variables
+
+sub_pred <- subset(pred_data, select = c(School, Conf, G, Att, Rsh_Yds,
+                                             Rsh_Avg, Rsh_TD, Rec, Rec_Yds, Rec_Avg,
+                                             Rec_TD, Plays))
+
+#### random forest predictions ################################################
+###############################################################################
+pred_2023 <- predict(randfor, newdata = sub_pred)
+
+rb_23_class <- as.data.frame(pred_2023)
+
+#### Merge with player names ####
+# create dummy variable for to merge player names 
+for(i in 1:nrow(rb_23_class)){
+  rb_23_class$row_count[i] <- i
+}
+
+# sub pred_data to player names ##
+player_pred <- subset(pred_data, select = c(Player))
+
+# create dummy variable for to merge player names 
+for(i in 1:nrow(player_pred)){
+  player_pred$row_count[i] <- i
+}
+
+# merge pred with player names by row_count
+predictions <- merge(player_pred, rb_23_class, by.x = "row_count", 
+                     by.y = "row_count", all=TRUE)
+
+## XGBoost Predictions #######################################################
+##############################################################################
+# convert sub_pred to xgb readable matrix
+mat_pred <- xgb.DMatrix(as.matrix(sub_pred))
+
+# compute prediction accuracy for testing data
+xg_23_pred <- as.data.frame(predict(xgb_reg, mat_pred))
+
+mat_xg_23_pred <- as.data.frame(xg_23_pred)
+
+for(i in 1:nrow(mat_xg_23_pred)){
+  mat_xg_23_pred$row_count[i] <- i
+}
+
+
+both_preds <- merge(predictions, mat_xg_23_pred, by.x = "row_count", 
+                     by.y = "row_count", all=TRUE)
+
+both_preds <- both_preds %>% dplyr::rename("Random Forest Prediction"=pred_2023,
+                                           "XGBoost Prediction"="predict(xgb_reg, mat_pred)")
+
+write.csv(both_preds,"C:/Users/saedw/OneDrive/Desktop/STAT 574 Data Mining/Final Project - RB WAR/r_predictions.csv", row.names = FALSE)
+
+```
+
